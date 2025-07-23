@@ -1,0 +1,16 @@
+[project]
+name = "ef-tts"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "dac>=0.4.3",
+    "datasets>=4.0.0",
+    "parler-tts",
+    "torch>=2.7.1",
+    "transformers>=4.46.1",
+]
+
+[tool.uv.sources]
+parler-tts = { git = "https://github.com/huggingface/parler-tts.git" }
