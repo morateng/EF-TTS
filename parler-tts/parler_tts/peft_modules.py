@@ -286,19 +286,39 @@ class PrecomputedVectorPEFT(nn.Module):
         # Initialize token classifier
         self.token_classifier = AttributeTokenClassifier(attribute_values)
         
-        # LoRA adapters for non-attribute vectors
-        self.lora_adapters = nn.ModuleList([
-            LoRAVectorTransform(vector_dim, lora_rank, lora_alpha)
-            for _ in range(num_vectors)
-        ])
+        # LoRA adapters for non-attribute vectors - token-content based
+        self.lora_adapters = nn.ModuleDict()
+        self.lora_rank = lora_rank
+        self.lora_alpha = lora_alpha
         
         # VAE modules for each attribute value (e.g., "gender_female", "accent_american")
         self.vae_modules = nn.ModuleDict()
         for attribute_key in self.token_classifier.get_all_attribute_keys():
             self.vae_modules[attribute_key] = AttributeVAE(vector_dim, vae_latent_dim)
-        
+            
         # Orthogonality regularizer
         self.orthogonal_reg = OrthogonalityRegularizer(orthogonal_reg_strength)
+    
+    def get_or_create_lora_adapter(self, token: str) -> LoRAVectorTransform:
+        """
+        Get existing LoRA adapter for token or create new one if doesn't exist.
+        
+        Args:
+            token: Token string (e.g., "voice", "with", "at")
+            
+        Returns:
+            LoRA adapter for the token
+        """
+        # Sanitize token name for PyTorch module names
+        safe_token = token.replace(".", "_DOT_").replace("<", "_LT_").replace(">", "_GT_").replace(" ", "_SPACE_")
+        
+        if safe_token not in self.lora_adapters:
+            self.lora_adapters[safe_token] = LoRAVectorTransform(
+                self.vector_dim, 
+                self.lora_rank, 
+                self.lora_alpha
+            )
+        return self.lora_adapters[safe_token]
         
     def forward(
         self,
@@ -319,8 +339,10 @@ class PrecomputedVectorPEFT(nn.Module):
         Returns:
             Dictionary containing enhanced vectors and losses
         """
+        # Process all vectors dynamically (no fixed limit)
+        seq_len = precomputed_vectors.shape[-2]
         if vector_indices is None:
-            vector_indices = list(range(min(self.num_vectors, precomputed_vectors.shape[-2])))
+            vector_indices = list(range(seq_len))
         
         enhanced_vectors = []
         vae_losses = []
@@ -331,15 +353,15 @@ class PrecomputedVectorPEFT(nn.Module):
             token_classifications = self.token_classifier.classify_tokens(description_tokens)
         
         # Process each vector
-        for i, vector_idx in enumerate(vector_indices):
-            if vector_idx >= len(self.lora_adapters):
-                continue
-                
+        for i in vector_indices:
             # Get the vector
             if precomputed_vectors.dim() == 3:  # [batch_size, seq_len, vector_dim]
                 vector = precomputed_vectors[:, i, :]
-            else:  # [num_vectors, vector_dim]
+            else:  # [seq_len, vector_dim]
                 vector = precomputed_vectors[i, :].unsqueeze(0)
+            
+            # Get corresponding token
+            token = description_tokens[i] if description_tokens and i < len(description_tokens) else f"unk_{i}"
             
             # Determine if this vector corresponds to an attribute token
             attribute_key = None
@@ -347,15 +369,16 @@ class PrecomputedVectorPEFT(nn.Module):
                 attribute_key = token_classifications[i]
             
             if attribute_key is not None and attribute_key in self.vae_modules:
-                # Use VAE for attribute vectors (with residual connection)
+                # Use VAE for attribute vectors
                 vae_module = self.vae_modules[attribute_key]
                 enhanced_vector, mu, logvar = vae_module(vector)
                 if return_losses:
                     vae_loss = vae_module.kl_loss(mu, logvar)
                     vae_losses.append(vae_loss)
             else:
-                # Use LoRA for non-attribute vectors
-                enhanced_vector = self.lora_adapters[vector_idx](vector)
+                # Use LoRA for non-attribute vectors (token-content based)
+                lora_adapter = self.get_or_create_lora_adapter(token)
+                enhanced_vector = lora_adapter(vector)
             
             enhanced_vectors.append(enhanced_vector)
         

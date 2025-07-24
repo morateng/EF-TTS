@@ -120,7 +120,6 @@ def train_peft_model():
     
     peft_module = PrecomputedVectorPEFT(
         vector_dim=1024,
-        num_vectors=10,
         attribute_values=attribute_values,
         lora_rank=8,
         lora_alpha=16.0,

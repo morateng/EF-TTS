@@ -57,28 +57,24 @@ class VectorLoader:
             # Check if token ends with period
             if token.endswith('.'):
                 has_period = True
-                # Remove punctuation but keep the word
+                # Remove punctuation except period, but keep the word
                 cleaned_token = re.sub(r'[^\w]', '', token)
                 if cleaned_token:
                     cleaned_tokens.append(cleaned_token)
+                # Add period as separate token
+                cleaned_tokens.append('.')
             else:
                 # Remove punctuation but keep the word
                 cleaned_token = re.sub(r'[^\w]', '', token)
                 if cleaned_token:
                     cleaned_tokens.append(cleaned_token)
         
-        # Always add period token if not present
-        if not has_period:
-            cleaned_tokens.append('.')
-        else:
-            cleaned_tokens.append('.')
-            
         # Always add </s> token at the end
         cleaned_tokens.append('<_s>')
         
-        # Find attribute values in the tokens (excluding . and </s>)
+        # Find attribute values in the tokens (excluding </s>)
         attributes = {}
-        for token in cleaned_tokens[:-2]:  # Exclude last two tokens (. and </s>)
+        for token in cleaned_tokens[:-1]:  # Exclude last token (</s>)
             if token in self.token_to_attribute:
                 attr_type, attr_value = self.token_to_attribute[token]
                 attributes[attr_type] = attr_value
