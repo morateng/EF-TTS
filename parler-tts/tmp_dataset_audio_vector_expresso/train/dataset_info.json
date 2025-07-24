@@ -1,0 +1,46 @@
+{
+  "builder_name": "parquet",
+  "citation": "",
+  "config_name": "default",
+  "dataset_name": "cap_tts-sft-expresso-cleaned",
+  "dataset_size": 12207530,
+  "description": "",
+  "download_checksums": {
+    "hf://datasets/morateng/CapTTS-SFT-expresso-cleaned@0f3dc740c0abc50fc47a1eac66bd14b5af73049c/data/train-00000-of-00001.parquet": {
+      "num_bytes": 2842104,
+      "checksum": null
+    }
+  },
+  "download_size": 2842104,
+  "features": {
+    "audio_path": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "text": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "rebuilt_caption": {
+      "dtype": "string",
+      "_type": "Value"
+    }
+  },
+  "homepage": "",
+  "license": "",
+  "size_in_bytes": 15049634,
+  "splits": {
+    "train": {
+      "name": "train",
+      "num_bytes": 12207530,
+      "num_examples": 12269,
+      "dataset_name": "cap_tts-sft-expresso-cleaned"
+    }
+  },
+  "version": {
+    "version_str": "0.0.0",
+    "major": 0,
+    "minor": 0,
+    "patch": 0
+  }
+}

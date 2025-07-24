@@ -11,6 +11,10 @@ class VectorLoader:
     def __init__(self, vector_base_path: str):
         self.vector_base_path = Path(vector_base_path) / "vectors"
         
+        # Load Parler-TTS tokenizer for proper subword tokenization
+        from transformers import AutoTokenizer
+        self.tokenizer = AutoTokenizer.from_pretrained("parler-tts/parler-tts-mini-v1")
+        
         # Define attribute mappings
         self.attribute_values = {
             "gender": ["male", "female"],
@@ -46,53 +50,40 @@ class VectorLoader:
             tokens: List of all tokens in order (including . and </s> at the end)
             attributes: Dict mapping attribute type to value found in caption
         """
-        # Tokenize the caption (simple whitespace split for now)
-        tokens = caption.lower().strip().split()
+        # Tokenize the caption using Parler-TTS tokenizer
+        tokenized = self.tokenizer(caption, add_special_tokens=False)
+        tokens = self.tokenizer.convert_ids_to_tokens(tokenized['input_ids'])
         
-        # Clean tokens (remove punctuation but keep track of it)
-        cleaned_tokens = []
-        has_period = False
-        
-        for token in tokens:
-            # Check if token ends with period
-            if token.endswith('.'):
-                has_period = True
-                # Remove punctuation except period, but keep the word
-                cleaned_token = re.sub(r'[^\w]', '', token)
-                if cleaned_token:
-                    cleaned_tokens.append(cleaned_token)
-                # Add period as separate token
-                cleaned_tokens.append('.')
-            else:
-                # Remove punctuation but keep the word
-                cleaned_token = re.sub(r'[^\w]', '', token)
-                if cleaned_token:
-                    cleaned_tokens.append(cleaned_token)
-        
-        # Always add </s> token at the end
-        cleaned_tokens.append('<_s>')
+        # T5 tokenizer already does subword tokenization
+        # Just add end-of-sequence token
+        cleaned_tokens = tokens + ['<_s>']
         
         # Find attribute values in the tokens (excluding </s>)
         attributes = {}
         for token in cleaned_tokens[:-1]:  # Exclude last token (</s>)
-            if token in self.token_to_attribute:
-                attr_type, attr_value = self.token_to_attribute[token]
+            # Remove T5 prefix and normalize token
+            clean_token = token.replace('▁', '').lower().strip()
+            if clean_token in self.token_to_attribute:
+                attr_type, attr_value = self.token_to_attribute[clean_token]
                 attributes[attr_type] = attr_value
                 
         return cleaned_tokens, attributes
     
     def load_vector_for_token(self, token: str) -> torch.Tensor:
         """Load precomputed vector for a given token."""
+        # Remove T5 prefix and normalize for attribute checking
+        clean_token = token.replace('▁', '').lower().strip()
+        
         # First check if it's an attribute token
-        if token in self.token_to_attribute:
-            attr_type, attr_value = self.token_to_attribute[token]
+        if clean_token in self.token_to_attribute:
+            attr_type, attr_value = self.token_to_attribute[clean_token]
             vector_path = self.vector_base_path / attr_type / f"{attr_value}.pt"
         else:
-            # It's a non-attribute token
+            # It's a non-attribute token - use original T5 token for file lookup
             vector_path = self.vector_base_path / "nonattr_tokens" / f"{token}.pt"
         
         if vector_path.exists():
-            return torch.load(vector_path, map_location='cpu')
+            return torch.load(vector_path, map_location='cpu').detach()
         else:
             # If specific token not found, try common alternatives
             alternatives = [
@@ -110,7 +101,7 @@ class VectorLoader:
             
             for alt_path in alternatives:
                 if alt_path.exists():
-                    return torch.load(alt_path, map_location='cpu')
+                    return torch.load(alt_path, map_location='cpu').detach()
             
             raise FileNotFoundError(f"Vector not found for token: {token}")
     

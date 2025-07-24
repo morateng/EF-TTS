@@ -1,0 +1,96 @@
+_wandb:
+    value:
+        cli_version: 0.21.0
+        e:
+            v075q9ncoo6g2y1297bq1jca5y20dlp0:
+                args:
+                    - helpers/training_configs/vector_training_expresso.json
+                codePath: parler-tts/training/run_parler_tts_vector_training.py
+                codePathLocal: training/run_parler_tts_vector_training.py
+                cpu_count: 20
+                cpu_count_logical: 28
+                cudaVersion: "12.8"
+                disk:
+                    /:
+                        total: "982820896768"
+                        used: "249023754240"
+                email: morateng@naver.com
+                executable: /home/user/Code/EF-TTS/.venv/bin/python3
+                git:
+                    commit: ff3a86e5def3b04252d1d73b75b5f55e719b413a
+                    remote: https://github.com/morateng/EF-TTS.git
+                gpu: NVIDIA GeForce RTX 5070 Ti
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Blackwell
+                      cudaCores: 8960
+                      memoryTotal: "17094934528"
+                      name: NVIDIA GeForce RTX 5070 Ti
+                      uuid: GPU-86647843-83a7-4cbe-0b02-cb72d8f7ec6f
+                host: user-B760M-DS3H
+                memory:
+                    total: "67177308160"
+                os: Linux-6.13.0-061300-generic-x86_64-with-glibc2.39
+                program: /home/user/Code/EF-TTS/parler-tts/training/run_parler_tts_vector_training.py
+                python: CPython 3.9.23
+                root: /home/user/Code/EF-TTS/parler-tts
+                startedAt: "2025-07-24T08:36:59.143621Z"
+                writerId: v075q9ncoo6g2y1297bq1jca5y20dlp0
+        m: []
+        python_version: 3.9.23
+        t:
+            "1":
+                - 1
+                - 5
+                - 11
+                - 49
+                - 51
+                - 53
+                - 71
+                - 100
+            "2":
+                - 1
+                - 5
+                - 11
+                - 49
+                - 51
+                - 53
+                - 71
+                - 100
+            "3":
+                - 13
+            "4": 3.9.23
+            "5": 0.21.0
+            "6": 4.46.1
+            "12": 0.21.0
+            "13": linux-x86_64
+adam_beta1:
+    value: 0.9
+adam_beta2:
+    value: 0.99
+freeze_text_encoder:
+    value: true
+global_batch_size:
+    value: 4
+gradient_accumulation_steps:
+    value: 8
+learning_rate:
+    value: 0.0001
+lr_scheduler_type:
+    value: CONSTANT_WITH_WARMUP
+max_duration_in_seconds:
+    value: 30
+mixed_precision:
+    value: bf16
+model_name_or_path:
+    value: parler-tts/parler-tts-mini-v1
+num_train_epochs:
+    value: 3
+per_device_train_batch_size:
+    value: 4
+temperature:
+    value: 1
+warmup_steps:
+    value: 500
+weight_decay:
+    value: 0.01

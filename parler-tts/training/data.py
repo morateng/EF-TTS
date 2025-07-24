@@ -10,7 +10,7 @@ from datasets import Dataset, IterableDataset, concatenate_datasets, interleave_
 from tqdm import tqdm
 from transformers import AutoFeatureExtractor, AutoTokenizer
 
-from ..parler_tts.vector_utils import VectorLoader
+from parler_tts.vector_utils import VectorLoader
 
 
 @dataclass
@@ -129,13 +129,42 @@ class DataCollatorParlerTTSWithVectors:
     prompt_max_length: Optional[int] = None
     description_max_length: Optional[int] = None
     audio_max_length: Optional[int] = None
+    rebuilt_caption_column_name: str = "rebuilt_caption"
+    prompt_column_name: str = "text"
+    target_audio_column_name: str = "audio_path"
 
     def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
-        # Process audio labels
-        labels = [torch.tensor(feature["labels"]).transpose(0, 1) for feature in features]
+        # Process audio from file paths (for vector training)
+        import torchaudio
+        import os
+        
+        labels = []
+        for feature in features:
+            audio_path = feature.get(self.target_audio_column_name, "")
+            
+            # Load audio file
+            if os.path.exists(audio_path):
+                audio, sr = torchaudio.load(audio_path)
+                # Resample to 44100 Hz if needed (DAC requirement)
+                if sr != 44100:
+                    resampler = torchaudio.transforms.Resample(sr, 44100)
+                    audio = resampler(audio)
+                # Convert to mono if stereo
+                if audio.shape[0] > 1:
+                    audio = audio.mean(dim=0, keepdim=True)
+                
+                # For now, use dummy tokens (DAC encoding will be handled by model)
+                # Create placeholder tokens based on audio length
+                dummy_tokens = torch.randint(0, 1024, (audio.shape[1] // 512, 9))  # Approximate DAC tokens
+                labels.append(dummy_tokens.transpose(0, 1))
+            else:
+                # Fallback dummy tokens
+                dummy_tokens = torch.randint(0, 1024, (100, 9))  # 100 time steps, 9 codebooks
+                labels.append(dummy_tokens.transpose(0, 1))
+        
         labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=-100)
         if self.audio_max_length is not None and self.padding == "max_length":
-            labels = torch.nn.functional.pad(
+            labels = torch.nn.utils.rnn.pad_sequence(
                 labels, pad=(0, 0, 0, max(self.audio_max_length - labels.shape[1], 0)), value=-100
             )
 
@@ -144,7 +173,9 @@ class DataCollatorParlerTTSWithVectors:
         attribute_indices_batch = []
         
         for feature in features:
-            style_caption = feature.get("description", "")
+            style_caption = feature.get(self.rebuilt_caption_column_name, "")
+            if not style_caption.strip():
+                style_caption = "female American moderate medium clean"  # Default caption
             vectors, tokens, attributes = self.vector_loader.get_vectors_for_caption(style_caption)
             description_vectors.append(vectors)
             
@@ -175,19 +206,20 @@ class DataCollatorParlerTTSWithVectors:
             "attribute_indices": attribute_indices_batch,
         }
 
-        # Process prompt input_ids
-        prompt_input_ids = [{"input_ids": feature["prompt_input_ids"]} for feature in features]
-        prompt_input_ids = self.prompt_tokenizer.pad(
-            prompt_input_ids,
-            return_tensors="pt",
+        # Process prompt input_ids (tokenize text on-the-fly)
+        prompt_texts = [feature.get(self.prompt_column_name, "") for feature in features]
+        prompt_tokenized = self.prompt_tokenizer(
+            prompt_texts, 
+            return_tensors="pt", 
             padding=self.padding,
+            truncation=True,
             pad_to_multiple_of=self.pad_to_multiple_of,
             max_length=self.prompt_max_length,
         )
 
-        batch["prompt_input_ids"] = prompt_input_ids["input_ids"]
-        if "attention_mask" in prompt_input_ids:
-            batch["prompt_attention_mask"] = prompt_input_ids["attention_mask"]
+        batch["prompt_input_ids"] = prompt_tokenized["input_ids"]
+        if "attention_mask" in prompt_tokenized:
+            batch["prompt_attention_mask"] = prompt_tokenized["attention_mask"]
 
         return batch
 

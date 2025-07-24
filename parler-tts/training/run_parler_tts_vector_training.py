@@ -422,8 +422,7 @@ def main():
     if model_args.use_precomputed_vectors:
         from parler_tts.vector_utils import VectorLoader
         vector_loader = VectorLoader(
-            base_path=model_args.vector_base_path,
-            device=accelerator.device
+            vector_base_path=model_args.vector_base_path
         )
 
     # Test all gather - used for warmout and avoiding timeout

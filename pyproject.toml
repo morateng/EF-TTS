@@ -5,11 +5,15 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
+    "accelerate>=1.9.0",
     "dac>=0.4.3",
     "datasets>=4.0.0",
+    "evaluate>=0.4.5",
+    "jiwer>=4.0.0",
     "parler-tts",
     "torch>=2.7.1",
     "transformers>=4.46.1",
+    "wandb>=0.21.0",
 ]
 
 [tool.uv.sources]
