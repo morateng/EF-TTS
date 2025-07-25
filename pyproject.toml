@@ -11,7 +11,8 @@ dependencies = [
     "evaluate>=0.4.5",
     "jiwer>=4.0.0",
     "parler-tts",
-    "torch>=2.7.1",
+    "torch==2.6.0",
+    "torchvision==0.21.0",
     "transformers>=4.46.1",
     "wandb>=0.21.0",
 ]
@@ -20,6 +21,4 @@ dependencies = [
 parler-tts = { git = "https://github.com/huggingface/parler-tts.git" }
 
 [tool.uv.workspace]
-members = [
-    "parler-tts",
-]
+members = []
