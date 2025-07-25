@@ -323,7 +323,7 @@ class PrecomputedVectorPEFT(nn.Module):
     def forward(
         self,
         precomputed_vectors: torch.Tensor,
-        description_tokens: Optional[List[str]] = None,
+        description_tokens: Optional[Union[List[str], List[List[str]]]] = None,
         vector_indices: Optional[List[int]] = None,
         return_losses: bool = True
     ) -> Dict[str, torch.Tensor]:
@@ -331,78 +331,120 @@ class PrecomputedVectorPEFT(nn.Module):
         Apply PEFT transformations to precomputed vectors using token-level attribute processing.
         
         Args:
-            precomputed_vectors: Tensor of shape [batch_size, seq_len, vector_dim] or [num_vectors, vector_dim]
-            description_tokens: List of description tokens for attribute classification
+            precomputed_vectors: Tensor of shape [batch_size, seq_len, vector_dim] or [seq_len, vector_dim]
+            description_tokens: List of tokens (single sequence) or List[List[str]] (batch of sequences)
             vector_indices: Which vectors to process (if None, process all)
             return_losses: Whether to return VAE and orthogonality losses
             
         Returns:
             Dictionary containing enhanced vectors and losses
         """
-        # Process all vectors dynamically (no fixed limit)
-        seq_len = precomputed_vectors.shape[-2]
+        # Determine input shape and batch processing
+        if precomputed_vectors.dim() == 3:  # [batch_size, seq_len, vector_dim]
+            batch_size, seq_len, vector_dim = precomputed_vectors.shape
+            is_batched = True
+        else:  # [seq_len, vector_dim] - single sequence
+            seq_len, vector_dim = precomputed_vectors.shape
+            batch_size = 1
+            is_batched = False
+            precomputed_vectors = precomputed_vectors.unsqueeze(0)  # Add batch dimension
+        
         if vector_indices is None:
             vector_indices = list(range(seq_len))
         
-        enhanced_vectors = []
-        vae_losses = []
-        
-        # Classify tokens if description_tokens provided
-        token_classifications = None
+        # Handle description_tokens format
         if description_tokens is not None:
-            token_classifications = self.token_classifier.classify_tokens(description_tokens)
-        
-        # Process each vector
-        for i in vector_indices:
-            # Get the vector
-            if precomputed_vectors.dim() == 3:  # [batch_size, seq_len, vector_dim]
-                vector = precomputed_vectors[:, i, :]
-            else:  # [seq_len, vector_dim]
-                vector = precomputed_vectors[i, :].unsqueeze(0)
-            
-            # Get corresponding token
-            token = description_tokens[i] if description_tokens and i < len(description_tokens) else f"unk_{i}"
-            
-            # Determine if this vector corresponds to an attribute token
-            attribute_key = None
-            if token_classifications is not None and i < len(token_classifications):
-                attribute_key = token_classifications[i]
-            
-            if attribute_key is not None and attribute_key in self.vae_modules:
-                # Use VAE for attribute vectors
-                vae_module = self.vae_modules[attribute_key]
-                enhanced_vector, mu, logvar = vae_module(vector)
-                if return_losses:
-                    vae_loss = vae_module.kl_loss(mu, logvar)
-                    vae_losses.append(vae_loss)
+            if isinstance(description_tokens, list) and len(description_tokens) > 0:
+                if isinstance(description_tokens[0], list):
+                    # Batch of token sequences: [[tokens_batch1], [tokens_batch2], ...]
+                    batch_tokens = description_tokens
+                else:
+                    # Single token sequence: [token1, token2, ...]
+                    batch_tokens = [description_tokens] if not is_batched else [description_tokens] * batch_size
             else:
-                # Use LoRA for non-attribute vectors (token-content based)
-                lora_adapter = self.get_or_create_lora_adapter(token)
-                enhanced_vector = lora_adapter(vector)
-            
-            enhanced_vectors.append(enhanced_vector)
+                batch_tokens = [[]] * batch_size
+        else:
+            batch_tokens = [[]] * batch_size
         
-        # Stack enhanced vectors
-        enhanced_vectors = torch.stack(enhanced_vectors, dim=-2)
+        # Process each batch item
+        enhanced_vectors_batch = []
+        vae_losses_batch = []
+        
+        for batch_idx in range(batch_size):
+            # Get tokens for this batch item
+            tokens_for_batch = batch_tokens[batch_idx] if batch_idx < len(batch_tokens) else []
+            
+            # Classify tokens for this batch item
+            token_classifications = None
+            if tokens_for_batch:
+                token_classifications = self.token_classifier.classify_tokens(tokens_for_batch)
+            
+            # Process vectors for this batch item
+            enhanced_vectors_for_batch = []
+            vae_losses_for_batch = []
+            
+            for i in vector_indices:
+                # Get the vector for this batch item and position
+                vector = precomputed_vectors[batch_idx:batch_idx+1, i, :]  # [1, vector_dim]
+                
+                # Get corresponding token
+                token = tokens_for_batch[i] if i < len(tokens_for_batch) else f"unk_{i}"
+                
+                # Determine if this vector corresponds to an attribute token
+                attribute_key = None
+                if token_classifications is not None and i < len(token_classifications):
+                    attribute_key = token_classifications[i]
+                
+                if attribute_key is not None and attribute_key in self.vae_modules:
+                    # Use VAE for attribute vectors
+                    vae_module = self.vae_modules[attribute_key]
+                    enhanced_vector, mu, logvar = vae_module(vector)
+                    
+                    if return_losses:
+                        vae_loss = vae_module.kl_loss(mu, logvar)
+                        vae_losses_for_batch.append(vae_loss)
+                else:
+                    # Use LoRA for non-attribute vectors (token-content based)
+                    lora_adapter = self.get_or_create_lora_adapter(token)
+                    enhanced_vector = lora_adapter(vector)
+                
+                enhanced_vectors_for_batch.append(enhanced_vector)
+            
+            # Stack vectors for this batch item
+            enhanced_vectors_for_batch = torch.stack(enhanced_vectors_for_batch, dim=1)  # [1, seq_len, vector_dim]
+            enhanced_vectors_batch.append(enhanced_vectors_for_batch)
+            vae_losses_batch.append(vae_losses_for_batch)
+        
+        # Stack all batch items
+        enhanced_vectors = torch.cat(enhanced_vectors_batch, dim=0)  # [batch_size, seq_len, vector_dim]
+        
+        # Remove batch dimension if input was single sequence
+        if not is_batched:
+            enhanced_vectors = enhanced_vectors.squeeze(0)  # [seq_len, vector_dim]
         
         result = {"enhanced_vectors": enhanced_vectors}
         
         if return_losses:
-            # VAE losses
-            if vae_losses:
-                result["vae_loss"] = torch.stack(vae_losses).mean()
+            # VAE losses - average across batch and sequence
+            all_vae_losses = []
+            for batch_losses in vae_losses_batch:
+                if batch_losses:
+                    all_vae_losses.extend(batch_losses)
+            
+            if all_vae_losses:
+                result["vae_loss"] = torch.stack(all_vae_losses).mean()
             else:
                 result["vae_loss"] = torch.tensor(0.0, device=precomputed_vectors.device)
             
             # Orthogonality loss
-            if enhanced_vectors.dim() == 3:
+            if enhanced_vectors.dim() == 3:  # Batched
                 # Average over batch dimension for orthogonality
                 orth_loss = torch.stack([
                     self.orthogonal_reg(enhanced_vectors[b])
                     for b in range(enhanced_vectors.shape[0])
                 ]).mean()
-            else:
-                orth_loss = self.orthogonal_reg(enhanced_vectors.squeeze(0))
+            else:  # Single sequence
+                orth_loss = self.orthogonal_reg(enhanced_vectors)
             
             result["orthogonality_loss"] = orth_loss
         

@@ -18,3 +18,8 @@ dependencies = [
 
 [tool.uv.sources]
 parler-tts = { git = "https://github.com/huggingface/parler-tts.git" }
+
+[tool.uv.workspace]
+members = [
+    "parler-tts",
+]

@@ -151,7 +151,10 @@ class VectorLoader:
         nonattr_indices = []
         
         for i, token in enumerate(tokens):
-            if token in self.token_to_attribute:
+            # Handle T5 tokenizer prefixes (▁ prefix from SentencePiece)
+            clean_token = token.replace('▁', '').lower().strip()
+            
+            if clean_token and clean_token in self.token_to_attribute:
                 attribute_indices.append(i)
             else:
                 nonattr_indices.append(i)

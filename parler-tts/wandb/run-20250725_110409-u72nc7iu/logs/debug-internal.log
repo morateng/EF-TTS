@@ -1,0 +1,17 @@
+{"time":"2025-07-25T11:04:09.931241196+09:00","level":"INFO","msg":"stream: starting","core version":"0.21.0"}
+{"time":"2025-07-25T11:04:10.25507512+09:00","level":"INFO","msg":"stream: created new stream","id":"u72nc7iu"}
+{"time":"2025-07-25T11:04:10.2551261+09:00","level":"INFO","msg":"stream: started","id":"u72nc7iu"}
+{"time":"2025-07-25T11:04:10.255267924+09:00","level":"INFO","msg":"writer: Do: started","stream_id":"u72nc7iu"}
+{"time":"2025-07-25T11:04:10.255267823+09:00","level":"INFO","msg":"sender: started","stream_id":"u72nc7iu"}
+{"time":"2025-07-25T11:04:10.255369432+09:00","level":"INFO","msg":"handler: started","stream_id":"u72nc7iu"}
+{"time":"2025-07-25T11:04:10.438577324+09:00","level":"ERROR","msg":"HTTP error","status":401,"method":"POST","url":"https://api.wandb.ai/graphql"}
+{"time":"2025-07-25T11:04:10.438724786+09:00","level":"ERROR","msg":"runupserter: failed to init run","error":"returned error 401: {\"data\":{\"upsertBucket\":null},\"errors\":[{\"message\":\"user is not logged in\",\"path\":[\"upsertBucket\"],\"extensions\":{\"code\":\"PERMISSION_ERROR\"}}]}"}
+{"time":"2025-07-25T11:04:11.440955302+09:00","level":"INFO","msg":"stream: closing","id":"u72nc7iu"}
+{"time":"2025-07-25T11:04:11.441341575+09:00","level":"ERROR","msg":"sender: uploadConfigFile: stream: no run"}
+{"time":"2025-07-25T11:04:11.67946833+09:00","level":"ERROR","msg":"HTTP error","status":404,"method":"POST","url":"https://api.wandb.ai/graphql"}
+{"time":"2025-07-25T11:04:11.679606904+09:00","level":"ERROR","msg":"runfiles: CreateRunFiles returned error: returned error 404: {\"data\":{\"createRunFiles\":null},\"errors\":[{\"message\":\"project /parler-tts-vector-training not found during createRunFiles\",\"path\":[\"createRunFiles\"]}]}"}
+{"time":"2025-07-25T11:04:11.680294645+09:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-07-25T11:04:11.680351432+09:00","level":"INFO","msg":"handler: closed","stream_id":"u72nc7iu"}
+{"time":"2025-07-25T11:04:11.68036029+09:00","level":"INFO","msg":"writer: Close: closed","stream_id":"u72nc7iu"}
+{"time":"2025-07-25T11:04:11.680433878+09:00","level":"INFO","msg":"sender: closed","stream_id":"u72nc7iu"}
+{"time":"2025-07-25T11:04:11.680443738+09:00","level":"INFO","msg":"stream: closed","id":"u72nc7iu"}

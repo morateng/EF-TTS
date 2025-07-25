@@ -376,6 +376,8 @@ def main():
             "decoder_start_token_id": model_args.decoder_start_token_id
             if model_args.decoder_start_token_id is not None
             else config.decoder_start_token_id,
+            "use_precomputed_vectors": model_args.use_precomputed_vectors,
+            "precomputed_vector_dim": 1024 if model_args.use_precomputed_vectors else None,
         }
     )
 
@@ -1121,8 +1123,15 @@ def main():
                 batch_samples += [next(train_iterator)]
                 
             # get num items in batch - if different than BOS and than -100
-            num_items_in_batch = sum([(batch["labels"].ne(audio_encoder_bos_token_id) | batch["labels"].ne(-100) | batch["labels"].ne(audio_encoder_eos_token_id)).sum((0,1))[0] for batch in batch_samples])
-            num_items_in_batch = accelerator.gather(num_items_in_batch).sum().item()
+            batch_counts = []
+            for batch in batch_samples:
+                mask = (batch["labels"].ne(audio_encoder_bos_token_id) & 
+                       batch["labels"].ne(-100) & 
+                       batch["labels"].ne(audio_encoder_eos_token_id))
+                count = mask.sum()
+                batch_counts.append(count.item() if count.dim() == 0 else count)
+            num_items_in_batch = sum(batch_counts)
+            num_items_in_batch = accelerator.gather(torch.tensor(num_items_in_batch, device=accelerator.device)).sum().item()
             
             # losses = []
             for i,batch in enumerate(batch_samples):

@@ -155,21 +155,49 @@ class DataCollatorParlerTTSWithVectors:
                 
                 # For now, use dummy tokens (DAC encoding will be handled by model)
                 # Create placeholder tokens based on audio length
-                dummy_tokens = torch.randint(0, 1024, (audio.shape[1] // 512, 9))  # Approximate DAC tokens
-                labels.append(dummy_tokens.transpose(0, 1))
+                time_steps = audio.shape[1] // 512
+                dummy_tokens = torch.randint(0, 1024, (9, time_steps))  # [num_codebooks, time_steps]
+                labels.append(dummy_tokens)
             else:
                 # Fallback dummy tokens
-                dummy_tokens = torch.randint(0, 1024, (100, 9))  # 100 time steps, 9 codebooks
-                labels.append(dummy_tokens.transpose(0, 1))
+                dummy_tokens = torch.randint(0, 1024, (9, 100))  # [num_codebooks, time_steps]
+                labels.append(dummy_tokens)
         
-        labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=-100)
-        if self.audio_max_length is not None and self.padding == "max_length":
-            labels = torch.nn.utils.rnn.pad_sequence(
-                labels, pad=(0, 0, 0, max(self.audio_max_length - labels.shape[1], 0)), value=-100
-            )
+        # Manual padding to preserve [num_codebooks, time_steps] structure
+        if labels:
+            max_time_steps = max(label.shape[1] for label in labels)
+            padded_labels = []
+            
+            for label in labels:
+                # label is [num_codebooks, time_steps]
+                if label.shape[1] < max_time_steps:
+                    pad_length = max_time_steps - label.shape[1]
+                    padded_label = torch.nn.functional.pad(label, (0, pad_length), value=-100)
+                else:
+                    padded_label = label
+                padded_labels.append(padded_label)
+            
+            # Stack to [batch_size, num_codebooks, time_steps]
+            labels = torch.stack(padded_labels, dim=0)
+            
+            # Apply max_length constraint if needed
+            if self.audio_max_length is not None and self.padding == "max_length":
+                if labels.shape[2] < self.audio_max_length:
+                    pad_length = self.audio_max_length - labels.shape[2]
+                    labels = torch.nn.functional.pad(labels, (0, pad_length), value=-100)
+                elif labels.shape[2] > self.audio_max_length:
+                    labels = labels[:, :, :self.audio_max_length]
+            
+            # Keep 3D shape for shift_tokens_right, then transpose to (bsz, time_steps, num_codebooks)
+            batch_size, num_codebooks, time_steps = labels.shape
+            labels = labels.transpose(1, 2)  # (bsz, time_steps, num_codebooks)
+        else:
+            # Fallback empty labels - flattened format
+            labels = torch.empty(0, 0, dtype=torch.long)
 
         # Process style captions to get precomputed vectors
         description_vectors = []
+        description_tokens_batch = []
         attribute_indices_batch = []
         
         for feature in features:
@@ -178,6 +206,7 @@ class DataCollatorParlerTTSWithVectors:
                 style_caption = "female American moderate medium clean"  # Default caption
             vectors, tokens, attributes = self.vector_loader.get_vectors_for_caption(style_caption)
             description_vectors.append(vectors)
+            description_tokens_batch.append(tokens)
             
             # Get indices for PEFT application
             indices = self.vector_loader.get_attribute_indices(tokens)
@@ -201,8 +230,9 @@ class DataCollatorParlerTTSWithVectors:
 
         batch = {
             "labels": labels,
-            "description_vectors": description_vectors,
-            "description_attention_mask": description_attention_mask,
+            "precomputed_vectors": description_vectors,
+            "attention_mask": description_attention_mask,
+            "description_tokens": description_tokens_batch,
             "attribute_indices": attribute_indices_batch,
         }
 

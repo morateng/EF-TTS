@@ -19,6 +19,7 @@ from .peft_modules import (
     AttributeVAE,
     OrthogonalityRegularizer,
 )
+from .vector_utils import VectorLoader
 
 from importlib.metadata import version
 from packaging.version import Version
