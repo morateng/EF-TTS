@@ -130,6 +130,13 @@ class VectorLoader:
                 continue
         
         if not vectors:
+            print(f"DEBUG: Failed caption: '{caption}'")
+            print(f"DEBUG: Tokens: {tokens}")
+            print(f"DEBUG: Available vector files:")
+            import os
+            for root, dirs, files in os.walk(self.vector_base_path):
+                if files:
+                    print(f"  {root}: {files[:5]}...")  # Show first 5 files
             raise ValueError(f"No vectors found for caption: {caption}")
             
         # Concatenate along sequence dimension

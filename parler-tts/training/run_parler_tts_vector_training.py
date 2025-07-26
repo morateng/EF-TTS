@@ -242,13 +242,29 @@ def main():
             from datasets import load_dataset
             
             if training_args.do_train:
-                raw_datasets["train"] = load_dataset(
-                    data_args.train_dataset_name,
-                    data_args.train_dataset_config_name,
-                    split=data_args.train_split_name,
-                    cache_dir=model_args.cache_dir,
-                    num_proc=data_args.preprocessing_num_workers,
-                )
+                # Handle multiple splits concatenation
+                if "+" in data_args.train_split_name:
+                    from datasets import concatenate_datasets
+                    split_names = data_args.train_split_name.split("+")
+                    train_datasets = []
+                    for split_name in split_names:
+                        split_dataset = load_dataset(
+                            data_args.train_dataset_name,
+                            data_args.train_dataset_config_name,
+                            split=split_name.strip(),
+                            cache_dir=model_args.cache_dir,
+                            num_proc=data_args.preprocessing_num_workers,
+                        )
+                        train_datasets.append(split_dataset)
+                    raw_datasets["train"] = concatenate_datasets(train_datasets)
+                else:
+                    raw_datasets["train"] = load_dataset(
+                        data_args.train_dataset_name,
+                        data_args.train_dataset_config_name,
+                        split=data_args.train_split_name,
+                        cache_dir=model_args.cache_dir,
+                        num_proc=data_args.preprocessing_num_workers,
+                    )
                 
                 # Keep only required columns
                 required_columns = [
@@ -701,7 +717,7 @@ def main():
                 input_columns=["prompt_input_ids"],
             )
 
-    if training_args.group_by_length:
+    if training_args.group_by_length and not model_args.use_precomputed_vectors:
         # apply a simple heuristic to take into account audio and text lengths
         def add_target_lengths(target_length, prompt, description):
             return {"target_length": target_length + len(prompt) + len(description)}
@@ -711,6 +727,17 @@ def main():
                 add_target_lengths,
                 num_proc=num_workers,
                 input_columns=["target_length", "prompt_input_ids", "input_ids"],
+            )
+    elif training_args.group_by_length and model_args.use_precomputed_vectors:
+        # For vector training, use simpler length calculation
+        def add_target_lengths_vector(text, rebuilt_caption):
+            return {"target_length": len(text) + len(rebuilt_caption)}
+
+        with accelerator.local_main_process_first():
+            vectorized_datasets = vectorized_datasets.map(
+                add_target_lengths_vector,
+                num_proc=num_workers,
+                input_columns=["text", "rebuilt_caption"],
             )
 
     # for large datasets it is advised to run the preprocessing on a
