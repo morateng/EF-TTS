@@ -57,10 +57,14 @@ class LoRAVectorTransform(nn.Module):
         # lora_A shape: [vector_dim, rank]
         # lora_B shape: [rank, vector_dim]
         
+        # Ensure LoRA parameters are on the same device as input
+        lora_A = self.lora_A.to(x.device)
+        lora_B = self.lora_B.to(x.device)
+        
         # First step: x @ A -> [..., rank]
-        temp = torch.matmul(x, self.lora_A)
+        temp = torch.matmul(x, lora_A)
         # Second step: temp @ B -> [..., vector_dim]  
-        lora_output = torch.matmul(temp, self.lora_B) * self.scaling
+        lora_output = torch.matmul(temp, lora_B) * self.scaling
         
         return x + self.dropout(lora_output)
 
@@ -298,6 +302,9 @@ class PrecomputedVectorPEFT(nn.Module):
             
         # Orthogonality regularizer
         self.orthogonal_reg = OrthogonalityRegularizer(orthogonal_reg_strength)
+        
+        # LayerNorm removed - causing excessive vector changes
+        # self.layer_norm = nn.LayerNorm(vector_dim)
     
     def get_or_create_lora_adapter(self, token: str) -> LoRAVectorTransform:
         """
@@ -408,6 +415,8 @@ class PrecomputedVectorPEFT(nn.Module):
                     lora_adapter = self.get_or_create_lora_adapter(token)
                     enhanced_vector = lora_adapter(vector)
                 
+                # LayerNorm removed - was causing excessive vector changes
+                # enhanced_vector = self.layer_norm(enhanced_vector)
                 enhanced_vectors_for_batch.append(enhanced_vector)
             
             # Stack vectors for this batch item

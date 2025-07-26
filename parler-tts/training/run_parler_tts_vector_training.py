@@ -740,7 +740,12 @@ def main():
     ):
         results = {}
         input_ids = descriptions
-        texts = description_tokenizer.batch_decode(input_ids, skip_special_tokens=True)
+        
+        # For vector mode, descriptions are already text strings, not token IDs
+        if model_args.use_precomputed_vectors:
+            texts = descriptions  # Already text strings
+        else:
+            texts = description_tokenizer.batch_decode(input_ids, skip_special_tokens=True)
         prompts = prompt_tokenizer.batch_decode(prompts, skip_special_tokens=True)
         audios = [a.float().cpu().numpy() for a in audios]
 
@@ -1065,6 +1070,26 @@ def main():
 
     def generate_step(batch, accelerator):
         batch.pop("decoder_attention_mask", None)
+        batch.pop("attribute_indices", None)  # Remove attribute_indices for generation
+        
+        # Convert description_texts to description_tokens for PEFT
+        if "description_texts" in batch:
+            description_texts = batch.pop("description_texts")
+            # Convert to token format that PEFT expects
+            if description_texts and len(description_texts) > 0:
+                # For each description text, tokenize it to get tokens
+                from transformers import AutoTokenizer
+                tokenizer = AutoTokenizer.from_pretrained("parler-tts/parler-tts-mini-v1")
+                description_tokens_batch = []
+                for desc_text in description_texts:
+                    if desc_text and desc_text.strip():
+                        tokens = tokenizer.convert_ids_to_tokens(
+                            tokenizer(desc_text.strip(), return_tensors="pt").input_ids[0]
+                        )
+                        description_tokens_batch.append(tokens)
+                    else:
+                        description_tokens_batch.append([])
+                batch["description_tokens"] = description_tokens_batch
         eval_model = accelerator.unwrap_model(model, keep_fp32_wrapper=True)
         if training_args.torch_compile:
             # if the model is compiled, we use the original model bc compile is not compatible with .generate
@@ -1205,6 +1230,7 @@ def main():
                 eval_preds = []
                 eval_descriptions = []
                 eval_prompts = []
+                eval_original_texts = []  # Store original text descriptions
                 eval_start = time.time()
 
                 # release training input batch
@@ -1251,14 +1277,32 @@ def main():
                     ):
                         generated_audios = generate_step(batch, accelerator)
                         # Gather all predictions and targets
-                        generated_audios, input_ids, prompts = accelerator.pad_across_processes(
-                            (generated_audios, batch["input_ids"], batch["prompt_input_ids"]), dim=1, pad_index=0
-                        )
-                        generated_audios, input_ids, prompts = accelerator.gather_for_metrics(
-                            (generated_audios, input_ids, prompts)
+                        if model_args.use_precomputed_vectors:
+                            # For vector mode, use precomputed_vectors instead of input_ids
+                            generated_audios, input_vectors, prompts = accelerator.pad_across_processes(
+                                (generated_audios, batch["precomputed_vectors"], batch["prompt_input_ids"]), dim=1, pad_index=0
+                            )
+                            generated_audios, input_vectors, prompts = accelerator.gather_for_metrics(
+                                (generated_audios, input_vectors, prompts)
+                            )
+                        else:
+                            generated_audios, input_ids, prompts = accelerator.pad_across_processes(
+                                (generated_audios, batch["input_ids"], batch["prompt_input_ids"]), dim=1, pad_index=0
+                            )
+                            generated_audios, input_ids, prompts = accelerator.gather_for_metrics(
+                                (generated_audios, input_ids, prompts)
                         )
                         eval_preds.extend(generated_audios.to("cpu"))
-                        eval_descriptions.extend(input_ids.to("cpu"))
+                        if model_args.use_precomputed_vectors:
+                            eval_descriptions.extend(input_vectors.to("cpu"))
+                            # Collect original text descriptions from batch
+                            original_texts = batch.get("description_texts", [])
+                            if not original_texts:
+                                # Fallback: try to get from rebuilt_caption if available
+                                original_texts = batch.get("rebuilt_caption", [""] * len(generated_audios))
+                            eval_original_texts.extend(original_texts)
+                        else:
+                            eval_descriptions.extend(input_ids.to("cpu"))
                         eval_prompts.extend(prompts.to("cpu"))
 
                 eval_time = time.time() - eval_start
@@ -1280,7 +1324,7 @@ def main():
                             si_sdr_measures,
                         ) = compute_metrics(
                             eval_preds,
-                            eval_descriptions,
+                            eval_original_texts if model_args.use_precomputed_vectors else eval_descriptions,
                             eval_prompts,
                             accelerator.device,
                             training_args.compute_clap_similarity_metric,
@@ -1324,7 +1368,10 @@ def main():
                     eval_metrics, eval_preds, eval_descriptions, eval_prompts, batch, eval_metric
                 )
                 if training_args.predict_with_generate and (cur_step % eval_generation_steps == 0 or cur_step == total_train_steps):
-                    generated_audios, input_ids, prompts = release_memory(generated_audios, input_ids, prompts)
+                    if model_args.use_precomputed_vectors:
+                        generated_audios, input_vectors, prompts = release_memory(generated_audios, input_vectors, prompts)
+                    else:
+                        generated_audios, input_ids, prompts = release_memory(generated_audios, input_ids, prompts)
 
                 # train mode
                 model.train()

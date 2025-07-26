@@ -197,16 +197,18 @@ class DataCollatorParlerTTSWithVectors:
 
         # Process style captions to get precomputed vectors
         description_vectors = []
+        original_captions = []  # Store original text descriptions
         description_tokens_batch = []
         attribute_indices_batch = []
         
         for feature in features:
             style_caption = feature.get(self.rebuilt_caption_column_name, "")
             if not style_caption.strip():
-                style_caption = "female American moderate medium clean"  # Default caption
+                style_caption = "A female voice with American accent speaks moderate at a medium pitch and a clean quality"  # Default caption
             vectors, tokens, attributes = self.vector_loader.get_vectors_for_caption(style_caption)
             description_vectors.append(vectors)
             description_tokens_batch.append(tokens)
+            original_captions.append(style_caption)  # Store original text
             
             # Get indices for PEFT application
             indices = self.vector_loader.get_attribute_indices(tokens)
@@ -250,6 +252,9 @@ class DataCollatorParlerTTSWithVectors:
         batch["prompt_input_ids"] = prompt_tokenized["input_ids"]
         if "attention_mask" in prompt_tokenized:
             batch["prompt_attention_mask"] = prompt_tokenized["attention_mask"]
+            
+        # Add original text descriptions for evaluation
+        batch["description_texts"] = original_captions
 
         return batch
 

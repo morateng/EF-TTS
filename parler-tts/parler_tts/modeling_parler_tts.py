@@ -2728,7 +2728,7 @@ class ParlerTTSForConditionalGeneration(PreTrainedModel):
             precomputed_vectors = model_kwargs["precomputed_vectors"]
             
             # Apply PEFT transformations if available
-            if self.vector_peft is not None:
+            if self.vector_peft is not None:  # PEFT enabled (LayerNorm removed)
                 # Extract description_tokens from model_kwargs if available
                 description_tokens = model_kwargs.get("description_tokens", None)
                 peft_results = self.vector_peft(
